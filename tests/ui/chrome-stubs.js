@@ -54,6 +54,13 @@
   const noop = () => {};
   const asyncNoop = () => Promise.resolve();
 
+  // Permission stubs default to "everything granted" so existing tests don't
+  // need to opt into the optional_permissions / optional_host_permissions
+  // dance. Tests that need to exercise denial paths can override
+  // window.__permissionsResult before this script runs.
+  const permResult = (typeof window !== "undefined" && window.__permissionsResult) ?? true;
+  const permListeners = { added: [], removed: [] };
+
   window.chrome = {
     storage: {
       local: {
@@ -73,10 +80,19 @@
       launchWebAuthFlow: () => Promise.reject(new Error("auth flow stubbed")),
     },
     runtime: {
+      id: "test-extension-id",
       sendMessage: asyncNoop,
       onMessage: { addListener: noop },
       onInstalled: { addListener: noop },
       onStartup: { addListener: noop },
+    },
+    permissions: {
+      contains: () => Promise.resolve(permResult),
+      request: () => Promise.resolve(permResult),
+      getAll: () => Promise.resolve({ permissions: [], origins: [] }),
+      remove: () => Promise.resolve(true),
+      onAdded:   { addListener: (fn) => permListeners.added.push(fn) },
+      onRemoved: { addListener: (fn) => permListeners.removed.push(fn) },
     },
     alarms: {
       create: asyncNoop,
