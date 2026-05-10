@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "JWT Vault",
+  "version": "0.5.1",
+  "description": "Encrypted token vault: store JWT/auth tokens, group by environment, fetch via OAuth2, autofill as Authorization headers.",
+  "permissions": [
+    "storage",
+    "declarativeNetRequest",
+    "declarativeNetRequestFeedback",
+    "identity",
+    "alarms"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js",
+    "scripts": ["background.js"],
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "JWT Vault"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "jwt-vault@example.com",
+      "strict_min_version": "121.0"
+    }
+  }
+}

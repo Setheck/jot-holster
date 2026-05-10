@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>JWT Vault</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="hdr">
+      <div class="brand">
+        <span class="dot"></span>
+        <h1>jwt vault</h1>
+      </div>
+      <div class="hdr-actions">
+        <button id="lock-btn" class="icon-btn" title="Lock vault" aria-label="Lock" hidden>⌧</button>
+        <button id="tools-btn" class="icon-btn" title="JWT tools" aria-label="JWT tools">⚒</button>
+        <button id="settings-btn" class="icon-btn" title="Settings" aria-label="Settings">⚙</button>
+        <button id="import-btn" class="icon-btn" title="Import" aria-label="Import">↓</button>
+        <button id="export-btn" class="icon-btn" title="Export" aria-label="Export">↑</button>
+        <button id="add-btn" class="icon-btn" title="Add token" aria-label="Add token">+</button>
+      </div>
+    </header>
+
+    <input type="file" id="import-file" accept="application/json" hidden />
+
+    <nav class="view-tabs" id="view-tabs">
+      <button type="button" class="view-tab active" data-view="tokens">tokens</button>
+      <button type="button" class="view-tab" data-view="certs">certs</button>
+    </nav>
+
+    <main id="locked-screen" class="locked" hidden>
+      <div class="locked-card">
+        <div class="lock-glyph">⌬</div>
+        <h2>vault locked</h2>
+        <form id="unlock-form">
+          <input
+            type="password"
+            id="unlock-input"
+            name="passphrase"
+            placeholder="passphrase"
+            required
+            autofocus
+            autocomplete="current-password"
+          />
+          <button type="submit" class="primary">unlock</button>
+          <p class="locked-err" id="unlock-err"></p>
+        </form>
+      </div>
+    </main>
+
+    <main id="list" class="list" aria-live="polite"></main>
+    <main id="cert-list" class="list" aria-live="polite" hidden></main>
+
+    <datalist id="env-suggestions"></datalist>
+
+    <template id="row-tpl">
+      <article class="row">
+        <header class="row-hdr">
+          <label class="switch">
+            <input type="checkbox" class="toggle" />
+            <span class="slider"></span>
+          </label>
+          <div class="meta">
+            <h2 class="name"><span class="status-dot"></span><span class="name-text"></span></h2>
+            <p class="pattern"></p>
+          </div>
+          <div class="actions">
+            <button class="refresh" title="Fetch via OAuth" aria-label="Refresh">↻</button>
+            <button class="copy" title="Copy token" aria-label="Copy">⧉</button>
+            <button class="edit" title="Edit" aria-label="Edit">✎</button>
+            <button class="del" title="Delete" aria-label="Delete">✕</button>
+          </div>
+        </header>
+        <details class="decode">
+          <summary>decode</summary>
+          <pre class="payload"></pre>
+        </details>
+      </article>
+    </template>
+
+    <template id="cert-tpl">
+      <article class="row cert">
+        <header class="row-hdr">
+          <div class="meta">
+            <h2 class="name"><span class="status-dot"></span><span class="name-text"></span></h2>
+            <p class="pattern cert-sub"></p>
+          </div>
+          <div class="actions">
+            <button class="copy-pem" title="Copy PEM" aria-label="Copy PEM">⧉</button>
+            <button class="cert-edit" title="Edit" aria-label="Edit">✎</button>
+            <button class="cert-del" title="Delete" aria-label="Delete">✕</button>
+          </div>
+        </header>
+        <details class="cert-info">
+          <summary>info</summary>
+          <dl class="cert-fields">
+            <dt>subject</dt><dd class="ci-subject"></dd>
+            <dt>issuer</dt><dd class="ci-issuer"></dd>
+            <dt>valid from</dt><dd class="ci-from"></dd>
+            <dt>valid to</dt><dd class="ci-to"></dd>
+            <dt>algorithm</dt><dd class="ci-alg"></dd>
+            <dt>serial</dt><dd class="ci-serial"></dd>
+            <dt>SHA-256</dt><dd class="ci-fp"></dd>
+            <dt class="ci-san-row">SANs</dt><dd class="ci-san"></dd>
+          </dl>
+        </details>
+      </article>
+    </template>
+
+    <!-- editor -->
+    <dialog id="editor">
+      <form id="form">
+        <h2 id="form-title">new token</h2>
+
+        <label>
+          <span>label</span>
+          <input name="name" required maxlength="60" placeholder="staging api" autocomplete="off" />
+        </label>
+
+        <label>
+          <span>environment</span>
+          <input name="env" list="env-suggestions" maxlength="40" placeholder="staging, prod, dev..." autocomplete="off" />
+        </label>
+
+        <label>
+          <span>token</span>
+          <textarea name="value" rows="3" placeholder="eyJhbGciOi..." autocomplete="off"></textarea>
+          <small class="hint">leave empty if you'll fetch via oauth</small>
+        </label>
+
+        <label>
+          <span>url pattern</span>
+          <input name="pattern" required placeholder="https://api.example.com/*" autocomplete="off" />
+        </label>
+
+        <label class="row-flex">
+          <input type="checkbox" name="enabled" />
+          <span>enabled (inject header)</span>
+        </label>
+
+        <details id="oauth-section">
+          <summary>oauth2 fetch</summary>
+          <div class="oauth-fields">
+            <label class="row-flex">
+              <input type="checkbox" name="oauthEnabled" />
+              <span>configure oauth2</span>
+            </label>
+            <label>
+              <span>grant type</span>
+              <select name="grant">
+                <option value="client_credentials">client credentials (m2m)</option>
+                <option value="authorization_code">authorization code + pkce</option>
+              </select>
+            </label>
+            <label>
+              <span>token endpoint</span>
+              <input name="tokenUrl" placeholder="https://idp.example.com/oauth/token" autocomplete="off" />
+            </label>
+            <label class="auth-only">
+              <span>authorize endpoint</span>
+              <input name="authUrl" placeholder="https://idp.example.com/oauth/authorize" autocomplete="off" />
+            </label>
+            <label>
+              <span>client id</span>
+              <input name="clientId" autocomplete="off" />
+            </label>
+            <label>
+              <span>client secret <em>(optional for pkce)</em></span>
+              <input name="clientSecret" type="password" autocomplete="off" />
+            </label>
+            <label>
+              <span>scope</span>
+              <input name="scope" placeholder="read:users write:users" autocomplete="off" />
+            </label>
+            <label>
+              <span>audience <em>(auth0 / others, optional)</em></span>
+              <input name="audience" placeholder="https://api.example.com" autocomplete="off" />
+            </label>
+            <label class="row-flex">
+              <input type="checkbox" name="autoRefresh" />
+              <span>auto-refresh before expiry</span>
+            </label>
+            <div class="redirect-hint auth-only">
+              <span>redirect uri (register with your idp):</span>
+              <code id="redirect-uri"></code>
+              <button type="button" id="copy-redirect" class="link">copy</button>
+            </div>
+          </div>
+        </details>
+
+        <input type="hidden" name="id" />
+
+        <footer>
+          <button type="button" id="cancel">cancel</button>
+          <button type="submit" class="primary">save</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <!-- cert editor -->
+    <dialog id="cert-editor">
+      <form id="cert-form">
+        <h2 id="cert-form-title">add cert</h2>
+        <label>
+          <span>label</span>
+          <input name="name" required maxlength="60" placeholder="my server" autocomplete="off" />
+        </label>
+        <label>
+          <span>environment</span>
+          <input name="env" list="env-suggestions" maxlength="40" placeholder="staging, prod..." autocomplete="off" />
+        </label>
+        <label>
+          <span>PEM</span>
+          <textarea name="pem" required rows="8" placeholder="-----BEGIN CERTIFICATE-----&#10;..." autocomplete="off"></textarea>
+        </label>
+        <p class="cert-err" id="cert-err"></p>
+        <input type="hidden" name="id" />
+        <footer>
+          <button type="button" id="cert-cancel">cancel</button>
+          <button type="submit" class="primary">save</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <!-- settings -->
+    <dialog id="settings-dlg">
+      <div class="settings-body">
+        <h2>settings</h2>
+
+        <section class="settings-block">
+          <h3>encryption</h3>
+          <div id="enc-unencrypted" hidden>
+            <p class="hint">tokens are stored unencrypted on this device.</p>
+            <button type="button" id="setup-encryption" class="primary">set up encryption</button>
+          </div>
+          <div id="enc-unlocked" hidden>
+            <p class="hint">vault is encrypted and unlocked.</p>
+            <div class="btn-row">
+              <button type="button" id="change-passphrase">change passphrase</button>
+              <button type="button" id="disable-encryption" class="danger">remove encryption</button>
+            </div>
+          </div>
+        </section>
+
+        <footer>
+          <button type="button" id="settings-close">close</button>
+        </footer>
+      </div>
+    </dialog>
+
+    <!-- passphrase -->
+    <dialog id="pass-dlg">
+      <form id="pass-form">
+        <h2 id="pass-title">set passphrase</h2>
+        <label>
+          <span id="pass-label">passphrase</span>
+          <input type="password" name="passphrase" required minlength="8" autocomplete="new-password" autofocus />
+        </label>
+        <label id="pass-confirm-row">
+          <span>confirm</span>
+          <input type="password" name="confirm" required minlength="8" autocomplete="new-password" />
+        </label>
+        <p class="hint warn" id="pass-warn">⚠ if you forget this passphrase, your tokens cannot be recovered.</p>
+        <p class="pass-err" id="pass-err"></p>
+        <footer>
+          <button type="button" id="pass-cancel">cancel</button>
+          <button type="submit" class="primary">save</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <!-- jwt tools -->
+    <dialog id="tools-dlg">
+      <div class="tools-body">
+        <div class="tabs">
+          <button type="button" class="tab active" data-tab="decode">decode</button>
+          <button type="button" class="tab" data-tab="encode">encode</button>
+        </div>
+
+        <div class="tab-pane active" data-pane="decode">
+          <label>
+            <span>jwt</span>
+            <textarea id="dec-input" rows="4" placeholder="paste a token..." autocomplete="off"></textarea>
+          </label>
+          <div id="dec-output" class="dec-output" hidden>
+            <div class="dec-block">
+              <h4>header</h4>
+              <pre class="dec-json" id="dec-header"></pre>
+            </div>
+            <div class="dec-block">
+              <h4>payload</h4>
+              <pre class="dec-json" id="dec-payload"></pre>
+            </div>
+            <div class="dec-block" id="dec-claims-block">
+              <h4>time claims</h4>
+              <ul class="dec-claims" id="dec-claims"></ul>
+            </div>
+            <div class="dec-block">
+              <h4>signature</h4>
+              <pre class="dec-sig" id="dec-sig"></pre>
+            </div>
+            <div class="dec-block dec-verify">
+              <h4>verify signature</h4>
+              <p class="hint">algorithm: <span id="dec-verify-alg">-</span></p>
+              <label>
+                <span>key (HMAC secret, or PEM public key / certificate)</span>
+                <textarea id="verify-key" rows="3" placeholder="paste a secret, public key, or certificate" autocomplete="off"></textarea>
+              </label>
+              <label class="row-flex">
+                <span>or use stored cert:</span>
+                <select id="verify-cert">
+                  <option value="">—</option>
+                </select>
+              </label>
+              <button type="button" id="verify-btn">verify</button>
+              <p class="verify-result" id="verify-result"></p>
+            </div>
+          </div>
+          <p class="dec-err" id="dec-err"></p>
+        </div>
+
+        <div class="tab-pane" data-pane="encode">
+          <label>
+            <span>algorithm</span>
+            <select id="enc-alg">
+              <option value="HS256">HS256 (HMAC SHA-256)</option>
+              <option value="RS256">RS256 (RSA SHA-256)</option>
+              <option value="ES256">ES256 (ECDSA P-256)</option>
+            </select>
+          </label>
+          <label>
+            <span>header</span>
+            <textarea id="enc-header" rows="3"></textarea>
+          </label>
+          <label>
+            <span>payload</span>
+            <textarea id="enc-payload" rows="5"></textarea>
+          </label>
+          <label>
+            <span id="enc-secret-label">secret</span>
+            <textarea id="enc-secret" rows="3" placeholder="your-256-bit-secret"></textarea>
+          </label>
+          <button type="button" id="enc-btn" class="primary">encode</button>
+          <label id="enc-out-row" hidden>
+            <span>token</span>
+            <textarea id="enc-output" rows="4" readonly></textarea>
+            <button type="button" id="enc-copy" class="link">copy</button>
+          </label>
+          <p class="enc-err" id="enc-err"></p>
+        </div>
+
+        <footer>
+          <button type="button" id="tools-close">close</button>
+        </footer>
+      </div>
+    </dialog>
+
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>
