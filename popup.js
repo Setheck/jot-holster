@@ -884,6 +884,9 @@ toolsBtn.addEventListener("click", () => {
       exp: Math.floor(Date.now() / 1000) + 3600,
     }, null, 2);
   }
+  if (!encSecret.value && encAlg.value === "HS256") {
+    encSecret.value = "your-256-bit-secret";
+  }
 });
 toolsClose.addEventListener("click", () => toolsDlg.close());
 
