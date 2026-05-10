@@ -121,14 +121,14 @@ jobs:
               exit 1
             fi
           done
-          zip -qr "dist/token-manager-chrome-${version}.zip"  "${files[@]}"
-          zip -qr "dist/token-manager-firefox-${version}.xpi" "${files[@]}"
+          zip -qr "dist/jot-holster-chrome-${version}.zip"  "${files[@]}"
+          zip -qr "dist/jot-holster-firefox-${version}.xpi" "${files[@]}"
           ls -la dist/
 
       - name: upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: token-manager-${{ steps.version.outputs.version }}
+          name: jot-holster-${{ steps.version.outputs.version }}
           path: dist/
           if-no-files-found: error
           retention-days: 30
@@ -143,7 +143,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: token-manager-${{ needs.build.outputs.version }}
+          name: jot-holster-${{ needs.build.outputs.version }}
           path: dist/
 
       - name: create github release
