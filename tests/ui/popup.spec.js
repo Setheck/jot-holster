@@ -5,8 +5,11 @@
 // those.
 import { test, expect } from "@playwright/test";
 
-async function loadPopup(page, seed = {}) {
+async function loadPopup(page, seed = {}, options = {}) {
   await page.addInitScript((s) => { window.__seed = s; }, seed);
+  if (options.denyPermissions) {
+    await page.addInitScript(() => { window.__permissionsResult = false; });
+  }
   await page.addInitScript({ path: "tests/ui/chrome-stubs.js" });
   await page.goto("/popup.html");
   // give popup.js's initial refresh() a tick to run
@@ -224,6 +227,28 @@ test.describe("token list rendering", () => {
     await page.click(".row .reveal");
     await expect(page.locator(".row .decoded")).toBeVisible();
     await expect(page.locator(".row .claim-list li")).toContainText(["issued at", "expires", "issuer", "subject"]);
+  });
+
+  test("toggling on reverts when host permission is denied", async ({ page }) => {
+    await loadPopup(page, {
+      local: {
+        tokens: [{
+          id: "abc",
+          name: "staging api",
+          env: "staging",
+          value: "anything",
+          pattern: "https://api.example.com/*",
+          enabled: false,
+        }],
+      },
+    }, { denyPermissions: true });
+    const toggle = page.locator(".row .toggle");
+    await expect(toggle).not.toBeChecked();
+    // The checkbox itself is visually hidden behind a styled .slider — click
+    // the .switch wrapper (the label), which is the actual hit target.
+    await page.locator(".row .switch").click();
+    // permission denied → toggle should snap back to off
+    await expect(toggle).not.toBeChecked();
   });
 
   test("eye is hidden when the token is not a JWT", async ({ page }) => {

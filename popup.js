@@ -66,6 +66,25 @@ const passCancelBtn = $("#pass-cancel");
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
+// ---- permissions ----
+// Most of our chrome.* surface is opt-in: identity (OAuth interactive),
+// alarms (auto-refresh + badge), and host_permissions (DNR rule matching) are
+// all optional and requested at the moment the user enables the feature that
+// needs them. `chrome.permissions.request` MUST be called from a user gesture,
+// so we wire it through the same submit/click handlers that triggered the
+// configuration change.
+async function hasPermissions(query) {
+  try { return await chrome.permissions.contains(query); }
+  catch { return false; }
+}
+async function requestPermissions(query) {
+  try { return await chrome.permissions.request(query); }
+  catch { return false; }
+}
+async function ensurePermissions(query) {
+  return (await hasPermissions(query)) || (await requestPermissions(query));
+}
+
 let currentState = { state: "unencrypted", tokens: [], certs: [] };
 let currentView = "tokens"; // or "certs"
 
@@ -477,6 +496,18 @@ form.addEventListener("submit", async (e) => {
     flash("need a token or an oauth config", true);
     return;
   }
+
+  // host_permissions is the only runtime-grant path: enabling a token requires
+  // access to the URLs its rule will match. A denial saves the token but
+  // forces it disabled so the UI matches what's actually wired up.
+  if (data.enabled && data.pattern) {
+    const ok = await ensurePermissions({ origins: [data.pattern] });
+    if (!ok) {
+      data.enabled = false;
+      flash("host access denied — token saved but disabled", true);
+    }
+  }
+
   const tokens = [...currentState.tokens];
   const idx = tokens.findIndex((t) => t.id === data.id);
   if (idx >= 0 && tokens[idx].value === data.value && tokens[idx].expiresAt) {
@@ -598,10 +629,19 @@ list.addEventListener("change", async (e) => {
   const id = e.target.closest(".row").dataset.id;
   const tokens = [...currentState.tokens];
   const t = tokens.find((t) => t.id === id);
-  if (t) {
-    t.enabled = e.target.checked;
-    await writeTokens(tokens);
+  if (!t) return;
+  // Turning ON requires host access for the pattern. Denials revert the
+  // toggle so the UI matches the actually-stored state.
+  if (e.target.checked && t.pattern) {
+    const ok = await ensurePermissions({ origins: [t.pattern] });
+    if (!ok) {
+      e.target.checked = false;
+      flash("host access denied", true);
+      return;
+    }
   }
+  t.enabled = e.target.checked;
+  await writeTokens(tokens);
 });
 
 // ---- export ----

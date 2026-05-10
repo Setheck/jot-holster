@@ -323,3 +323,9 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 chrome.runtime.onInstalled.addListener(reconcile);
 chrome.runtime.onStartup.addListener(reconcile);
+
+// When the user grants (or revokes) host_permissions via the popup, re-run
+// the reconcile so newly-eligible tokens get rules and the badge updates,
+// rather than waiting until the next storage write.
+chrome.permissions.onAdded.addListener(reconcile);
+chrome.permissions.onRemoved.addListener(reconcile);
