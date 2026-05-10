@@ -1,4 +1,4 @@
-# Token Manager
+# JOT Holster
 
 A Chrome extension (MV3) that stores JWT/auth tokens, optionally encrypts them with a passphrase, groups them by environment, fetches them via OAuth2, and autofills them as `Authorization: Bearer ...` headers on requests matching a URL pattern.
 
@@ -7,7 +7,7 @@ A Chrome extension (MV3) that stores JWT/auth tokens, optionally encrypts them w
 1. Unzip the folder.
 2. Open `chrome://extensions`.
 3. Toggle **Developer mode** (top right).
-4. Click **Load unpacked** and select the `token-manager` folder.
+4. Click **Load unpacked** and select the `jot-holster` folder.
 5. Pin the extension to your toolbar.
 
 ## Features
@@ -109,14 +109,14 @@ applied when the request URL matches `token.pattern`. This covers `fetch`, `XHR`
 
 Load via `about:debugging` → "This Firefox" → "Load Temporary Add-on…" → pick `manifest.json`. For permanent install you'll need to package and either self-distribute (`web-ext sign`) or submit to AMO.
 
-The `gecko.id` in the manifest is set to a placeholder (`token-manager@example.com`) — change it before publishing. Firefox uses `browser.identity.getRedirectURL()` which returns a different URL pattern than Chrome (`https://<uuid>.extensions.allizom.org/` vs Chrome's `https://<id>.chromiumapp.org/`), so the redirect URI shown in the OAuth editor will match whichever browser is running. Register the right one with your IdP.
+The `gecko.id` in the manifest is set to a placeholder (`jot-holster@example.com`) — change it before publishing. Firefox uses `browser.identity.getRedirectURL()` which returns a different URL pattern than Chrome (`https://<uuid>.extensions.allizom.org/` vs Chrome's `https://<id>.chromiumapp.org/`), so the redirect URI shown in the OAuth editor will match whichever browser is running. Register the right one with your IdP.
 
 ### Safari
 
 Safari Web Extensions ship as native macOS/iOS apps. Rough flow:
 
 ```bash
-xcrun safari-web-extension-converter ./token-manager
+xcrun safari-web-extension-converter ./jot-holster
 # opens an Xcode project that wraps the extension
 # build, sign, and run from Xcode
 ```
@@ -131,7 +131,7 @@ Caveats: iOS Safari has a smaller popup, and `chrome.identity.launchWebAuthFlow`
 
 
 ```
-token-manager/
+jot-holster/
 ├── manifest.json     # MV3 manifest (background is type:module)
 ├── vault.js          # crypto helpers + storage state (tokens + certs)
 ├── x509.js           # minimal X.509 / ASN.1 DER parser

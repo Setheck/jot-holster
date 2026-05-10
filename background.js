@@ -1,5 +1,5 @@
 // =====================================================================
-// token-manager background service worker (ES module)
+// jot-holster background service worker (ES module)
 //
 // 1. mirror tokens into declarativeNetRequest dynamic rules — but ONLY
 //    when the vault is unlocked (or unencrypted)
@@ -140,7 +140,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   try {
     await fetchOAuthToken(id);
   } catch (e) {
-    console.error("[token-manager] auto-refresh failed", id, e);
+    console.error("[jot-holster] auto-refresh failed", id, e);
   }
 });
 
@@ -260,7 +260,7 @@ async function fetchOAuthToken(tokenId) {
     try {
       result = await flowRefreshToken(c);
     } catch (e) {
-      console.warn("[token-manager] refresh failed, falling back", e.message);
+      console.warn("[jot-holster] refresh failed, falling back", e.message);
       result = null;
     }
   }
