@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isBroadPattern, isInsecureUrl } from "../validation.js";
+import { isBroadPattern, isInsecureUrl, isValidHeaderName } from "../validation.js";
 
 test("isBroadPattern flags wildcards covering every host", () => {
   for (const p of [
@@ -51,4 +51,34 @@ test("isInsecureUrl handles empty / nullish inputs", () => {
 
 test("isInsecureUrl does not flag URLs that merely contain 'http' in the path", () => {
   assert.equal(isInsecureUrl("https://example.com/redirect?to=http://other"), false);
+});
+
+test("isValidHeaderName accepts RFC 7230 token characters", () => {
+  for (const name of [
+    "Authorization",
+    "X-Tenant-Id",
+    "X-Api-Version",
+    "Content-Type",
+    "X_Custom_Header",
+    "X.Foo",
+    "Header123",
+  ]) {
+    assert.equal(isValidHeaderName(name), true, `expected valid: ${JSON.stringify(name)}`);
+  }
+});
+
+test("isValidHeaderName rejects names with invalid characters", () => {
+  for (const name of [
+    "X Tenant",      // space
+    "X-Tenant:",     // colon
+    "X-Tenant\n",    // newline
+    "X-(foo)",       // parens
+    "X/foo",         // slash
+    "X-Tenant ",     // trailing space
+    "",
+    null,
+    undefined,
+  ]) {
+    assert.equal(isValidHeaderName(name), false, `expected invalid: ${JSON.stringify(name)}`);
+  }
 });

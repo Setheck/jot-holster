@@ -16,19 +16,35 @@ const TOKEN_FETCH_TIMEOUT_MS = 30_000;
 
 // --- declarativeNetRequest sync ---------------------------------------
 
+function buildRequestHeaders(token) {
+  // Extras come first so we can detect a user-supplied Authorization and skip
+  // the token-derived one (lets the user override Authorization if they really
+  // want to — they were warned about this in the editor).
+  const headers = [];
+  const seen = new Set();
+  for (const h of token.extraHeaders || []) {
+    const name = h?.name?.trim();
+    if (!name) continue;
+    headers.push({ header: name, operation: "set", value: h.value ?? "" });
+    seen.add(name.toLowerCase());
+  }
+  if (token.value && !seen.has("authorization")) {
+    headers.push({
+      header: "Authorization",
+      operation: "set",
+      value: `Bearer ${token.value}`,
+    });
+  }
+  return headers;
+}
+
 function buildRule(token, index) {
   return {
     id: RULE_OFFSET + index,
     priority: 1,
     action: {
       type: "modifyHeaders",
-      requestHeaders: [
-        {
-          header: "Authorization",
-          operation: "set",
-          value: `Bearer ${token.value}`,
-        },
-      ],
+      requestHeaders: buildRequestHeaders(token),
     },
     condition: {
       urlFilter: token.pattern,

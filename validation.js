@@ -16,3 +16,11 @@ export function isBroadPattern(p) {
 export function isInsecureUrl(url) {
   return /^\s*http:\/\//i.test(url || "");
 }
+
+// RFC 7230 §3.2.6 token characters. Header field-name must match this — the
+// declarativeNetRequest API will silently reject rules whose header names don't.
+const HEADER_NAME_RE = /^[!#$%&'*+\-.^_`|~0-9a-zA-Z]+$/;
+export function isValidHeaderName(name) {
+  if (!name) return false;
+  return HEADER_NAME_RE.test(name);
+}

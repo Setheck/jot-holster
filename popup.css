@@ -269,11 +269,30 @@ body.locked .list:empty::after {
 }
 
 .decoded {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.decoded[hidden] { display: none; }
+.decoded-raw summary {
+  color: var(--fg-dim);
+  cursor: pointer;
+  list-style: none;
+  font-size: 11px;
+  padding: 2px 0;
+  user-select: none;
+}
+.decoded-raw summary::-webkit-details-marker { display: none; }
+.decoded-raw summary::before { content: "▸ "; }
+.decoded-raw[open] summary::before { content: "▾ "; }
+.decoded-raw summary:hover { color: var(--fg); }
+.decoded-json {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 8px;
-  margin: 8px 0 0;
+  margin: 6px 0 0;
   font-family: var(--mono);
   font-size: 10.5px;
   line-height: 1.5;
@@ -284,7 +303,6 @@ body.locked .list:empty::after {
   white-space: pre-wrap;
   word-break: break-all;
 }
-.decoded[hidden] { display: none; }
 
 /* dialogs (shared) — scope display rules to [open] so the UA hide-when-closed
    rule keeps applying. Without [open], `display: flex` wins over the UA
@@ -417,11 +435,13 @@ dialog h2 {
 }
 .hint.warn { color: var(--warn); opacity: 1; }
 
+#extra-headers-section,
 #oauth-section {
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 8px 10px;
 }
+#extra-headers-section summary,
 #oauth-section summary {
   cursor: pointer;
   font-size: 11px;
@@ -431,9 +451,58 @@ dialog h2 {
   list-style: none;
   user-select: none;
 }
+#extra-headers-section summary::-webkit-details-marker,
 #oauth-section summary::-webkit-details-marker { display: none; }
+#extra-headers-section summary::before,
 #oauth-section summary::before { content: "▸ "; }
+#extra-headers-section[open] summary::before,
 #oauth-section[open] summary::before { content: "▾ "; }
+
+.extra-headers {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+#extra-headers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+#extra-headers-list:empty { display: none; }
+.eh-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.eh-row input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--fg);
+  padding: 6px 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  min-width: 0;
+}
+.eh-row input:focus { outline: none; border-color: var(--accent); }
+.eh-row .eh-name { flex: 0 0 40%; }
+.eh-row .eh-value { flex: 1; }
+.eh-row .eh-remove {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg-dim);
+  cursor: pointer;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  padding: 0;
+}
+.eh-row .eh-remove:hover { color: var(--danger); border-color: var(--danger); }
+#add-header-btn { align-self: flex-start; }
 .oauth-fields {
   margin-top: 10px;
   display: flex;
@@ -795,7 +864,7 @@ dialog h2 {
   overflow-y: auto;
 }
 .dec-sig { color: var(--fg-dim); }
-.dec-claims {
+.dec-claims, .claim-list {
   list-style: none;
   padding: 0;
   margin: 0;
@@ -804,26 +873,28 @@ dialog h2 {
   flex-direction: column;
   gap: 4px;
 }
-.dec-claims li {
+.dec-claims li, .claim-list li {
   display: flex;
   justify-content: space-between;
   gap: 8px;
   padding: 4px 0;
   border-bottom: 1px dashed var(--border);
 }
-.dec-claims li:last-child { border-bottom: none; }
-.dec-claims .claim-name {
+.dec-claims li:last-child, .claim-list li:last-child { border-bottom: none; }
+.dec-claims .claim-name, .claim-list .claim-name {
   color: var(--fg-dim);
   text-transform: lowercase;
+  flex-shrink: 0;
 }
-.dec-claims .claim-value {
+.dec-claims .claim-value, .claim-list .claim-value {
   color: var(--fg);
   text-align: right;
   font-size: 10.5px;
+  word-break: break-all;
 }
-.dec-claims .claim-value.expired { color: var(--danger); }
-.dec-claims .claim-value.urgent  { color: #fb923c; }
-.dec-claims .claim-value.warn    { color: var(--warn); }
+.dec-claims .claim-value.expired, .claim-list .claim-value.expired { color: var(--danger); }
+.dec-claims .claim-value.urgent, .claim-list .claim-value.urgent   { color: #fb923c; }
+.dec-claims .claim-value.warn, .claim-list .claim-value.warn       { color: var(--warn); }
 
 .dec-err, .enc-err {
   color: var(--danger);

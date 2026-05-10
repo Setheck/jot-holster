@@ -13,7 +13,7 @@ import {
 } from "./vault.js";
 import { parseCertificate, spkiFromCertPem, spkiFromPublicKeyPem } from "./x509.js";
 import { decodeJwt, expInfo, statusClass } from "./jwt.js";
-import { isBroadPattern, isInsecureUrl } from "./validation.js";
+import { isBroadPattern, isInsecureUrl, isValidHeaderName } from "./validation.js";
 
 const $ = (s, r = document) => r.querySelector(s);
 
@@ -237,10 +237,11 @@ function renderList() {
       if (!t.oauth?.tokenUrl) refreshBtn.classList.add("hidden");
 
       const revealBtn = node.querySelector(".reveal");
-      const decodedEl = node.querySelector(".decoded");
       const decoded = t.value ? decodeJwt(t.value) : null;
       if (decoded) {
-        decodedEl.textContent = JSON.stringify(decoded, null, 2);
+        populateClaimList(node.querySelector(".claim-list"), decoded);
+        node.querySelector(".decoded-json").textContent =
+          JSON.stringify(decoded, null, 2);
       } else {
         // Either no value at all, or an opaque (non-JWT) token. The eye is only
         // useful when there is something decodable to show.
@@ -324,11 +325,55 @@ grantSelect.addEventListener("change", applyOAuthVisibility);
 const warnPattern = $("#warn-pattern");
 const warnTokenUrl = $("#warn-token-url");
 const warnAuthUrl = $("#warn-auth-url");
+const warnAuthExtra = $("#warn-auth-extra");
+const warnInvalidHeader = $("#warn-invalid-header");
+
+const headerRowTpl = $("#header-row-tpl");
+const extraHeadersList = $("#extra-headers-list");
+const extraHeadersSection = $("#extra-headers-section");
+const addHeaderBtn = $("#add-header-btn");
+
+function addHeaderRow(name = "", value = "") {
+  const node = headerRowTpl.content.cloneNode(true);
+  node.querySelector(".eh-name").value = name;
+  node.querySelector(".eh-value").value = value;
+  extraHeadersList.append(node);
+}
+
+addHeaderBtn.addEventListener("click", () => {
+  addHeaderRow();
+  applyEditorWarnings();
+  // focus the new name input
+  const last = extraHeadersList.lastElementChild?.querySelector(".eh-name");
+  last?.focus();
+});
+
+extraHeadersList.addEventListener("click", (e) => {
+  const removeBtn = e.target.closest(".eh-remove");
+  if (!removeBtn) return;
+  removeBtn.closest(".eh-row")?.remove();
+  applyEditorWarnings();
+});
+
+extraHeadersList.addEventListener("input", (e) => {
+  if (e.target.classList.contains("eh-name")) applyEditorWarnings();
+});
 
 function applyEditorWarnings() {
   warnPattern.hidden = !isBroadPattern(form.elements.pattern.value);
   warnTokenUrl.hidden = !isInsecureUrl(form.elements.tokenUrl.value);
   warnAuthUrl.hidden = !isInsecureUrl(form.elements.authUrl.value);
+
+  let authOverride = false;
+  let invalidName = false;
+  for (const row of extraHeadersList.querySelectorAll(".eh-row")) {
+    const name = row.querySelector(".eh-name").value.trim();
+    if (!name) continue;
+    if (name.toLowerCase() === "authorization") authOverride = true;
+    if (!isValidHeaderName(name)) invalidName = true;
+  }
+  warnAuthExtra.hidden = !authOverride;
+  warnInvalidHeader.hidden = !invalidName;
 }
 
 for (const el of [form.elements.pattern, form.elements.tokenUrl, form.elements.authUrl]) {
@@ -342,7 +387,9 @@ function openEditor(t = null) {
   form.elements.env.value = t?.env || "";
   form.elements.value.value = t?.value || "";
   form.elements.pattern.value = t?.pattern || "";
-  form.elements.enabled.checked = t ? !!t.enabled : true;
+  // New tokens default to disabled — the user has to opt in to header injection
+  // after they've set the URL pattern.
+  form.elements.enabled.checked = !!t?.enabled;
 
   const o = t?.oauth || {};
   form.elements.oauthEnabled.checked = !!t?.oauth;
@@ -354,6 +401,13 @@ function openEditor(t = null) {
   form.elements.scope.value = o.scope || "";
   form.elements.audience.value = o.audience || "";
   form.elements.autoRefresh.checked = !!o.autoRefresh;
+
+  // extra headers
+  extraHeadersList.replaceChildren();
+  for (const h of t?.extraHeaders || []) {
+    addHeaderRow(h.name || "", h.value || "");
+  }
+  extraHeadersSection.open = !!(t?.extraHeaders?.length);
 
   oauthSection.open = !!t?.oauth;
   applyOAuthVisibility();
@@ -410,6 +464,15 @@ form.addEventListener("submit", async (e) => {
       data.oauth.refreshToken = existing.oauth.refreshToken;
     }
   }
+  // collect extra headers — drop rows with empty names
+  const extraHeaders = [];
+  for (const row of extraHeadersList.querySelectorAll(".eh-row")) {
+    const name = row.querySelector(".eh-name").value.trim();
+    const value = row.querySelector(".eh-value").value;
+    if (name) extraHeaders.push({ name, value });
+  }
+  if (extraHeaders.length) data.extraHeaders = extraHeaders;
+
   if (!data.value && !data.oauth?.tokenUrl) {
     flash("need a token or an oauth config", true);
     return;
@@ -825,6 +888,44 @@ function claimStatus(unixSec, kind) {
   return "";
 }
 
+// Populate a <ul> with the well-known JWT claims from `decoded`, formatting
+// time-based claims (iat/nbf/exp/auth_time) as readable timestamps and showing
+// iss/aud/sub as plain text. Returns true if any claim was added.
+function populateClaimList(listEl, decoded) {
+  listEl.replaceChildren();
+  if (!decoded) return false;
+  let any = false;
+  const append = (label, value, statusCls = "") => {
+    any = true;
+    const li = document.createElement("li");
+    const name = document.createElement("span");
+    name.className = "claim-name";
+    name.textContent = label;
+    const val = document.createElement("span");
+    val.className = "claim-value" + (statusCls ? " " + statusCls : "");
+    val.textContent = value;
+    li.append(name, val);
+    listEl.append(li);
+  };
+  const timeClaims = [
+    ["iat", "issued at"],
+    ["nbf", "not before"],
+    ["exp", "expires"],
+    ["auth_time", "auth time"],
+  ];
+  for (const [k, label] of timeClaims) {
+    const v = decoded.payload?.[k];
+    if (typeof v !== "number") continue;
+    append(label, `${fmtTime(v)} (${relativeTime(v)})`, claimStatus(v, k));
+  }
+  for (const [k, label] of [["iss", "issuer"], ["aud", "audience"], ["sub", "subject"]]) {
+    const v = decoded.payload?.[k];
+    if (v == null) continue;
+    append(label, Array.isArray(v) ? v.join(", ") : String(v));
+  }
+  return any;
+}
+
 function decodeAndRender() {
   const raw = decInput.value.trim();
   decErr.textContent = "";
@@ -849,43 +950,7 @@ function decodeAndRender() {
   decSig.textContent = parts[2] || "(unsigned)";
   document.getElementById("dec-verify-alg").textContent = decoded.header?.alg || "—";
 
-  // time claims
-  decClaims.innerHTML = "";
-  const timeClaims = [
-    ["iat", "issued at"],
-    ["nbf", "not before"],
-    ["exp", "expires"],
-    ["auth_time", "auth time"],
-  ];
-  let hasTimeClaim = false;
-  for (const [k, label] of timeClaims) {
-    const v = decoded.payload?.[k];
-    if (typeof v !== "number") continue;
-    hasTimeClaim = true;
-    const li = document.createElement("li");
-    const name = document.createElement("span");
-    name.className = "claim-name";
-    name.textContent = label;
-    const val = document.createElement("span");
-    val.className = "claim-value " + claimStatus(v, k);
-    val.textContent = `${fmtTime(v)} (${relativeTime(v)})`;
-    li.append(name, val);
-    decClaims.append(li);
-  }
-  for (const [k, label] of [["iss", "issuer"], ["aud", "audience"], ["sub", "subject"]]) {
-    const v = decoded.payload?.[k];
-    if (v == null) continue;
-    const li = document.createElement("li");
-    const name = document.createElement("span");
-    name.className = "claim-name";
-    name.textContent = label;
-    const val = document.createElement("span");
-    val.className = "claim-value";
-    val.textContent = Array.isArray(v) ? v.join(", ") : String(v);
-    li.append(name, val);
-    decClaims.append(li);
-  }
-  decClaimsBlock.hidden = !hasTimeClaim && decClaims.children.length === 0;
+  decClaimsBlock.hidden = !populateClaimList(decClaims, decoded);
 
   decOutput.hidden = false;
 }

@@ -147,8 +147,24 @@
             </button>
           </div>
         </header>
-        <pre class="decoded" hidden></pre>
+        <div class="decoded" hidden>
+          <ul class="claim-list"></ul>
+          <details class="decoded-raw">
+            <summary>raw</summary>
+            <pre class="decoded-json"></pre>
+          </details>
+        </div>
       </article>
+    </template>
+
+    <template id="header-row-tpl">
+      <div class="eh-row">
+        <input class="eh-name" placeholder="X-Custom-Header" autocomplete="off" />
+        <input class="eh-value" placeholder="value" autocomplete="off" />
+        <button type="button" class="eh-remove" aria-label="Remove header">
+          <svg class="icon"><use href="#i-trash"/></svg>
+        </button>
+      </div>
     </template>
 
     <template id="cert-tpl">
@@ -222,6 +238,16 @@
           <input type="checkbox" name="enabled" />
           <span>enabled (inject header)</span>
         </label>
+
+        <details id="extra-headers-section">
+          <summary>extra headers</summary>
+          <div class="extra-headers">
+            <div id="extra-headers-list"></div>
+            <button type="button" id="add-header-btn" class="link">+ add header</button>
+            <small class="hint warn" id="warn-auth-extra" hidden>'Authorization' here will override the token value above</small>
+            <small class="hint warn" id="warn-invalid-header" hidden>one or more header names contain invalid characters — the rule will be rejected</small>
+          </div>
+        </details>
 
         <details id="oauth-section">
           <summary>oauth2 fetch</summary>
