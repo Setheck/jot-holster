@@ -921,7 +921,9 @@ function populateClaimList(listEl, decoded) {
   for (const [k, label] of [["iss", "issuer"], ["aud", "audience"], ["sub", "subject"]]) {
     const v = decoded.payload?.[k];
     if (v == null) continue;
-    append(label, Array.isArray(v) ? v.join(", ") : String(v));
+    // Arrays (notably multi-valued `aud`) get one entry per line so they don't
+    // overflow the row width.
+    append(label, Array.isArray(v) ? v.join("\n") : String(v));
   }
   return any;
 }

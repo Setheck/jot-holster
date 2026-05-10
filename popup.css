@@ -30,6 +30,12 @@
 
 * { box-sizing: border-box; }
 
+/* Force the [hidden] attribute to win against any layout `display` we set on
+   the element itself. Without this, a rule like `.icon-btn { display: grid }`
+   shadows the user-agent's `[hidden] { display: none }` and the element stays
+   visible even when JS toggles `hidden`. */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   padding: 0;
@@ -891,6 +897,7 @@ dialog h2 {
   text-align: right;
   font-size: 10.5px;
   word-break: break-all;
+  white-space: pre-line;
 }
 .dec-claims .claim-value.expired, .claim-list .claim-value.expired { color: var(--danger); }
 .dec-claims .claim-value.urgent, .claim-list .claim-value.urgent   { color: #fb923c; }
