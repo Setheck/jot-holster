@@ -1,0 +1,10 @@
+{
+  "name": "token-manager",
+  "version": "0.5.1",
+  "description": "Token Manager browser extension — unit tests live in ./tests.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/"
+  }
+}

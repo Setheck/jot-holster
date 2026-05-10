@@ -80,82 +80,80 @@ body.locked .dot { background: var(--fg-dim); box-shadow: none; }
   height: 28px;
   border-radius: var(--radius);
   cursor: pointer;
-  font-size: 14px;
   display: grid;
   place-items: center;
   transition: all 0.15s;
+  padding: 0;
 }
 .icon-btn:hover { border-color: var(--accent); color: var(--accent); }
 
-/* locked screen */
-.locked {
-  padding: 32px 16px 40px;
-  display: grid;
-  place-items: center;
+.icon-sprite {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
 }
-.locked-card {
-  text-align: center;
+.icon {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+  flex-shrink: 0;
+  display: inline-block;
+  vertical-align: middle;
+}
+.icon-sm { width: 12px; height: 12px; }
+.actions .icon { width: 13px; height: 13px; }
+.reveal .i-hide { display: none; }
+.reveal.revealed .i-show { display: none; }
+.reveal.revealed .i-hide { display: inline-block; }
+
+/* locked banner (slim, sits above the list) */
+.locked-banner {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 14px;
-  width: 100%;
-}
-.lock-glyph {
-  font-size: 28px;
-  color: var(--fg-dim);
-  width: 56px;
-  height: 56px;
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
+  gap: 6px;
+  padding: 6px 8px;
   background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
 }
-.locked-card h2 {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--fg-dim);
-  margin: 0;
-  font-weight: 500;
-}
-#unlock-form {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 80%;
-  max-width: 280px;
-}
-#unlock-form input {
-  background: var(--bg-2);
+.locked-banner[hidden] { display: none; }
+.locked-banner input {
+  flex: 1;
+  min-width: 120px;
+  background: var(--bg);
   border: 1px solid var(--border);
   color: var(--fg);
-  padding: 9px 10px;
+  padding: 5px 8px;
   border-radius: 4px;
   font-family: var(--mono);
-  font-size: 12px;
-  text-align: center;
+  font-size: 11px;
 }
-#unlock-form input:focus { outline: none; border-color: var(--accent); }
-#unlock-form button {
+.locked-banner input:focus { outline: none; border-color: var(--accent); }
+.locked-banner button {
   background: var(--accent);
   color: var(--accent-fg);
   border: none;
-  padding: 9px;
+  padding: 5px 10px;
   border-radius: 4px;
   cursor: pointer;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
 }
-#unlock-form button:hover { opacity: 0.85; }
+.locked-banner button:hover { opacity: 0.85; }
 .locked-err {
   color: var(--danger);
   font-size: 11px;
-  margin: 0;
-  min-height: 14px;
+  flex-basis: 100%;
+  min-height: 0;
 }
+.locked-err:empty { display: none; }
 
 /* list */
 .list {
@@ -175,6 +173,9 @@ body.locked .dot { background: var(--fg-dim); box-shadow: none; }
 }
 #cert-list:empty::after {
   content: "no certs. tap + to add.";
+}
+body.locked .list:empty::after {
+  content: "vault is locked — unlock above to see tokens";
 }
 
 .group-hdr {
@@ -234,8 +235,10 @@ body.locked .dot { background: var(--fg-dim); box-shadow: none; }
 .actions button:hover { background: var(--bg-3); color: var(--fg); }
 .actions .del:hover { color: var(--danger); }
 .actions .refresh:hover { color: var(--accent); }
-.actions .refresh.hidden { display: none; }
+.actions .refresh.hidden,
+.actions .reveal.hidden { display: none; }
 .actions .refresh.loading { color: var(--accent); animation: spin 1s linear infinite; }
+.actions .reveal.revealed { color: var(--accent); }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .switch { position: relative; width: 28px; height: 16px; flex-shrink: 0; }
@@ -265,24 +268,13 @@ body.locked .dot { background: var(--fg-dim); box-shadow: none; }
   background: var(--accent-fg);
 }
 
-.decode { margin-top: 8px; font-size: 11px; }
-.decode summary {
-  color: var(--fg-dim);
-  cursor: pointer;
-  padding: 2px 0;
-  list-style: none;
-  user-select: none;
-}
-.decode summary::-webkit-details-marker { display: none; }
-.decode summary::before { content: "▸ "; }
-.decode[open] summary::before { content: "▾ "; }
-.decode summary:hover { color: var(--fg); }
-.payload {
+.decoded {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 8px;
-  margin: 6px 0 0;
+  margin: 8px 0 0;
+  font-family: var(--mono);
   font-size: 10.5px;
   line-height: 1.5;
   overflow-x: auto;
@@ -292,8 +284,11 @@ body.locked .dot { background: var(--fg-dim); box-shadow: none; }
   white-space: pre-wrap;
   word-break: break-all;
 }
+.decoded[hidden] { display: none; }
 
-/* dialogs (shared) */
+/* dialogs (shared) — scope display rules to [open] so the UA hide-when-closed
+   rule keeps applying. Without [open], `display: flex` wins over the UA
+   `dialog:not([open]) { display: none }` and every dialog renders in flow. */
 dialog {
   background: var(--bg-2);
   color: var(--fg);
@@ -304,24 +299,83 @@ dialog {
   width: 92%;
   max-height: 90vh;
 }
+dialog[open] {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
 
 dialog h2 {
-  font-size: 13px;
-  margin: 0 0 4px;
+  font-size: 12px;
+  margin: 0;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   font-weight: 500;
 }
 
-/* editor form */
-#form {
-  padding: 16px;
+/* dialog action bar (sticky top with cancel | title | save) */
+.dialog-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-2);
+  flex-shrink: 0;
+}
+.dialog-bar h2 {
+  flex: 1;
+  text-align: center;
+  min-width: 0;
+}
+.dialog-bar button {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg);
+  padding: 5px 11px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.dialog-bar button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
+}
+.dialog-bar button:hover { border-color: var(--fg-dim); }
+.dialog-bar button.primary:hover { opacity: 0.85; border-color: var(--accent); }
+/* Used as a flex spacer in dialogs that have only one bar action — mirrors the
+   real button's text/padding so the title stays visually centered. */
+.dialog-bar-spacer {
+  flex: 0 0 auto;
+  visibility: hidden;
+  padding: 5px 11px;
+  font-size: 11px;
+  border: 1px solid transparent;
+  font-family: var(--mono);
+}
+
+.dialog-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 16px 18px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-height: 85vh;
-  overflow-y: auto;
+}
+
+/* form-based dialogs: form is just a layout wrapper around bar + body */
+#form, #cert-form, #pass-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 #form label {
   display: flex;
@@ -416,45 +470,7 @@ dialog h2 {
   text-decoration: underline;
 }
 
-dialog footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 4px;
-  padding-top: 8px;
-}
-dialog footer button {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--fg);
-  padding: 7px 14px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-family: var(--mono);
-  font-size: 12px;
-}
-dialog footer button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-fg);
-  font-weight: 600;
-}
-dialog footer button:hover { border-color: var(--fg-dim); }
-dialog footer button.primary:hover { opacity: 0.85; border-color: var(--accent); }
-
-#form > footer {
-  position: sticky;
-  bottom: 0;
-  background: var(--bg-2);
-}
-
 /* settings */
-.settings-body {
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
 .settings-block {
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -495,12 +511,6 @@ dialog footer button.primary:hover { opacity: 0.85; border-color: var(--accent);
 .settings-block button:hover { opacity: 0.9; }
 
 /* passphrase */
-#pass-form {
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
 #pass-form label {
   display: flex;
   flex-direction: column;
@@ -534,7 +544,6 @@ dialog footer button.primary:hover { opacity: 0.85; border-color: var(--accent);
   top: 49px;
   z-index: 1;
 }
-body.locked .view-tabs { display: none; }
 .view-tab {
   flex: 1;
   background: transparent;
@@ -699,12 +708,13 @@ body.locked .view-tabs { display: none; }
 
 /* tools dialog */
 .tools-body {
-  padding: 16px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 16px 18px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-height: 88vh;
-  overflow-y: auto;
 }
 .tabs {
   display: flex;

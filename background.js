@@ -1,5 +1,5 @@
 // =====================================================================
-// jwt-vault background service worker (ES module)
+// token-manager background service worker (ES module)
 //
 // 1. mirror tokens into declarativeNetRequest dynamic rules — but ONLY
 //    when the vault is unlocked (or unencrypted)
@@ -8,34 +8,11 @@
 // =====================================================================
 
 import { readVault, writeTokens } from "./vault.js";
+import { tokenExpiryMs } from "./jwt.js";
 
 const RULE_OFFSET = 1000;
 const REFRESH_LEAD_MS = 5 * 60 * 1000;
-
-// --- jwt expiry helper -------------------------------------------------
-
-function decodeJwt(token) {
-  if (!token) return null;
-  try {
-    const parts = token.split(".");
-    if (parts.length < 2) return null;
-    const decode = (p) => {
-      const pad = p + "=".repeat((4 - (p.length % 4)) % 4);
-      const json = atob(pad.replace(/-/g, "+").replace(/_/g, "/"));
-      return JSON.parse(decodeURIComponent(escape(json)));
-    };
-    return { header: decode(parts[0]), payload: decode(parts[1]) };
-  } catch {
-    return null;
-  }
-}
-
-function tokenExpiry(t) {
-  const fromJwt = decodeJwt(t.value)?.payload?.exp;
-  if (fromJwt) return fromJwt * 1000;
-  if (t.expiresAt) return t.expiresAt;
-  return null;
-}
+const TOKEN_FETCH_TIMEOUT_MS = 30_000;
 
 // --- declarativeNetRequest sync ---------------------------------------
 
@@ -106,7 +83,7 @@ async function scheduleRefreshes() {
   if (v.state === "locked") return;
   for (const t of v.tokens) {
     if (!t.oauth?.autoRefresh || !t.oauth?.tokenUrl) continue;
-    const exp = tokenExpiry(t);
+    const exp = tokenExpiryMs(t);
     if (!exp) continue;
     const at = exp - REFRESH_LEAD_MS;
     if (at > Date.now() + 5000) {
@@ -126,7 +103,7 @@ async function updateBadge() {
   const now = Date.now();
   const expiredCount = v.tokens.filter((t) => {
     if (!t.enabled) return false;
-    const exp = tokenExpiry(t);
+    const exp = tokenExpiryMs(t);
     return exp && exp <= now;
   }).length;
   if (expiredCount > 0) {
@@ -147,7 +124,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   try {
     await fetchOAuthToken(id);
   } catch (e) {
-    console.error("[jwt-vault] auto-refresh failed", id, e);
+    console.error("[token-manager] auto-refresh failed", id, e);
   }
 });
 
@@ -181,6 +158,7 @@ async function postForm(url, params) {
       Accept: "application/json",
     },
     body: body.toString(),
+    signal: AbortSignal.timeout(TOKEN_FETCH_TIMEOUT_MS),
   });
   if (!r.ok) {
     const text = await r.text().catch(() => "");
@@ -214,6 +192,7 @@ async function flowAuthorizationCode(c) {
   const verifier = randomString(64);
   const challenge = await sha256base64url(verifier);
   const redirectUri = chrome.identity.getRedirectURL();
+  const state = randomString(32);
 
   const authUrl = new URL(c.authUrl);
   authUrl.searchParams.set("response_type", "code");
@@ -223,7 +202,7 @@ async function flowAuthorizationCode(c) {
   authUrl.searchParams.set("code_challenge_method", "S256");
   if (c.scope) authUrl.searchParams.set("scope", c.scope);
   if (c.audience) authUrl.searchParams.set("audience", c.audience);
-  authUrl.searchParams.set("state", randomString(16));
+  authUrl.searchParams.set("state", state);
 
   const responseUrl = await chrome.identity.launchWebAuthFlow({
     url: authUrl.toString(),
@@ -231,10 +210,13 @@ async function flowAuthorizationCode(c) {
   });
   if (!responseUrl) throw new Error("auth flow cancelled");
   const parsed = new URL(responseUrl);
-  const error =
-    parsed.searchParams.get("error") ||
-    new URLSearchParams(parsed.hash.slice(1)).get("error");
+  const hashParams = new URLSearchParams(parsed.hash.replace(/^#/, ""));
+  const error = parsed.searchParams.get("error") || hashParams.get("error");
   if (error) throw new Error(`auth error: ${error}`);
+  const returnedState = parsed.searchParams.get("state") || hashParams.get("state");
+  if (returnedState !== state) {
+    throw new Error("oauth state mismatch — possible csrf, request rejected");
+  }
   const code = parsed.searchParams.get("code");
   if (!code) throw new Error("no authorization code in redirect");
 
@@ -262,7 +244,7 @@ async function fetchOAuthToken(tokenId) {
     try {
       result = await flowRefreshToken(c);
     } catch (e) {
-      console.warn("[jwt-vault] refresh failed, falling back", e.message);
+      console.warn("[token-manager] refresh failed, falling back", e.message);
       result = null;
     }
   }

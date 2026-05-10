@@ -12,10 +12,11 @@ import {
   writeCerts,
 } from "./vault.js";
 import { parseCertificate, spkiFromCertPem, spkiFromPublicKeyPem } from "./x509.js";
+import { decodeJwt, expInfo, statusClass } from "./jwt.js";
+import { isBroadPattern, isInsecureUrl } from "./validation.js";
 
 const $ = (s, r = document) => r.querySelector(s);
 
-const lockedScreen = $("#locked-screen");
 const unlockForm = $("#unlock-form");
 const unlockInput = $("#unlock-input");
 const unlockErr = $("#unlock-err");
@@ -68,50 +69,13 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 let currentState = { state: "unencrypted", tokens: [], certs: [] };
 let currentView = "tokens"; // or "certs"
 
-// ---- jwt decode ----
-function decodeJwt(token) {
-  if (!token) return null;
-  try {
-    const parts = token.split(".");
-    if (parts.length < 2) return null;
-    const decode = (p) => {
-      const pad = p + "=".repeat((4 - (p.length % 4)) % 4);
-      const json = atob(pad.replace(/-/g, "+").replace(/_/g, "/"));
-      return JSON.parse(decodeURIComponent(escape(json)));
-    };
-    return { header: decode(parts[0]), payload: decode(parts[1]) };
-  } catch {
-    return null;
-  }
-}
-
-function tokenExpiry(t) {
-  const fromJwt = decodeJwt(t.value)?.payload?.exp;
-  if (fromJwt) return fromJwt * 1000;
-  if (t.expiresAt) return t.expiresAt;
-  return null;
-}
-
-function expInfo(t) {
-  const exp = tokenExpiry(t);
-  if (!exp) return { text: "", expired: false };
-  const ms = exp - Date.now();
-  if (ms <= 0) return { text: " · expired", expired: true };
-  const d = Math.floor(ms / 86400000);
-  const h = Math.floor((ms / 3600000) % 24);
-  const m = Math.floor((ms / 60000) % 60);
-  if (d > 0) return { text: ` · ${d}d ${h}h left`, expired: false };
-  if (h > 0) return { text: ` · ${h}h ${m}m left`, expired: false };
-  return { text: ` · ${m}m left`, expired: false };
-}
-
 // ---- render ----
 function applyChrome() {
   const locked = currentState.state === "locked";
   document.body.classList.toggle("locked", locked);
-  lockedScreen.hidden = !locked;
-  list.hidden = locked || currentView !== "tokens";
-  certList.hidden = locked || currentView !== "certs";
+  unlockForm.hidden = !locked;
+  list.hidden = currentView !== "tokens";
+  certList.hidden = currentView !== "certs";
 
   // disable unrelated buttons when locked
   for (const b of [addBtn, exportBtn, importBtn, settingsBtn]) b.disabled = locked;
@@ -231,16 +195,6 @@ function renderActive() {
   populateVerifyCertSelect();
 }
 
-function statusClass(t) {
-  const exp = tokenExpiry(t);
-  if (!exp) return "unknown";
-  const ms = exp - Date.now();
-  if (ms <= 0) return "expired";
-  if (ms < 5 * 60 * 1000) return "urgent";
-  if (ms < 60 * 60 * 1000) return "warn";
-  return "healthy";
-}
-
 function renderList() {
   list.innerHTML = "";
   if (currentState.state === "locked") return;
@@ -282,11 +236,15 @@ function renderList() {
       const refreshBtn = node.querySelector(".refresh");
       if (!t.oauth?.tokenUrl) refreshBtn.classList.add("hidden");
 
-      const decoded = decodeJwt(t.value);
+      const revealBtn = node.querySelector(".reveal");
+      const decodedEl = node.querySelector(".decoded");
+      const decoded = t.value ? decodeJwt(t.value) : null;
       if (decoded) {
-        node.querySelector(".payload").textContent = JSON.stringify(decoded, null, 2);
+        decodedEl.textContent = JSON.stringify(decoded, null, 2);
       } else {
-        node.querySelector(".decode").style.display = "none";
+        // Either no value at all, or an opaque (non-JWT) token. The eye is only
+        // useful when there is something decodable to show.
+        revealBtn.classList.add("hidden");
       }
       list.append(node);
     }
@@ -363,13 +321,27 @@ function applyOAuthVisibility() {
 
 grantSelect.addEventListener("change", applyOAuthVisibility);
 
+const warnPattern = $("#warn-pattern");
+const warnTokenUrl = $("#warn-token-url");
+const warnAuthUrl = $("#warn-auth-url");
+
+function applyEditorWarnings() {
+  warnPattern.hidden = !isBroadPattern(form.elements.pattern.value);
+  warnTokenUrl.hidden = !isInsecureUrl(form.elements.tokenUrl.value);
+  warnAuthUrl.hidden = !isInsecureUrl(form.elements.authUrl.value);
+}
+
+for (const el of [form.elements.pattern, form.elements.tokenUrl, form.elements.authUrl]) {
+  el.addEventListener("input", applyEditorWarnings);
+}
+
 function openEditor(t = null) {
   formTitle.textContent = t ? "edit token" : "new token";
   form.elements.id.value = t?.id || "";
   form.elements.name.value = t?.name || "";
   form.elements.env.value = t?.env || "";
   form.elements.value.value = t?.value || "";
-  form.elements.pattern.value = t?.pattern || "https://*/*";
+  form.elements.pattern.value = t?.pattern || "";
   form.elements.enabled.checked = t ? !!t.enabled : true;
 
   const o = t?.oauth || {};
@@ -385,6 +357,7 @@ function openEditor(t = null) {
 
   oauthSection.open = !!t?.oauth;
   applyOAuthVisibility();
+  applyEditorWarnings();
   redirectUriEl.textContent = chrome.identity.getRedirectURL();
 
   dlg.showModal();
@@ -523,7 +496,13 @@ list.addEventListener("click", async (e) => {
   const idx = tokens.findIndex((t) => t.id === id);
   if (idx < 0) return;
 
-  if (e.target.classList.contains("copy")) {
+  if (e.target.classList.contains("reveal")) {
+    const decodedEl = row.querySelector(".decoded");
+    const wasRevealed = !decodedEl.hidden;
+    decodedEl.hidden = wasRevealed;
+    e.target.classList.toggle("revealed", !wasRevealed);
+    e.target.title = wasRevealed ? "Show decoded JWT" : "Hide decoded JWT";
+  } else if (e.target.classList.contains("copy")) {
     if (!tokens[idx].value) {
       flash("no token value", true);
       return;
@@ -580,7 +559,7 @@ exportBtn.addEventListener("click", async () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `jwt-vault-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `token-manager-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
   flash("exported (plaintext)");
@@ -702,7 +681,11 @@ async function encryptCurrentData(passphrase) {
     ...blob,
   };
   const jwk = await exportJWK(key);
-  await chrome.storage.local.set({ vault });
+  // Overwrite the plaintext slots with empty arrays before removing them, so the
+  // most recent on-disk write for these keys is empty rather than the prior
+  // plaintext (which would otherwise linger in chrome.storage.local's backing
+  // log files until compaction).
+  await chrome.storage.local.set({ vault, tokens: [], certs: [] });
   await chrome.storage.local.remove(["tokens", "certs"]);
   await chrome.storage.session.set({ key: jwk });
 }
@@ -1056,9 +1039,9 @@ async function verifyJwt(jwt, keyText) {
 
   // RS256/384/512 or ES256/384/512: need SPKI bytes
   let spki;
-  if (keyText.includes("CERTIFICATE")) {
+  if (/-----BEGIN [A-Z0-9 ]*CERTIFICATE-----/i.test(keyText)) {
     spki = await spkiFromCertPem(keyText);
-  } else if (keyText.includes("PUBLIC KEY")) {
+  } else if (/-----BEGIN [A-Z0-9 ]*PUBLIC KEY-----/i.test(keyText)) {
     spki = spkiFromPublicKeyPem(keyText);
   } else {
     throw new Error("expected PEM CERTIFICATE or PUBLIC KEY");
